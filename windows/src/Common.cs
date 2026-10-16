@@ -27,7 +27,13 @@ namespace LouisaWiFi
     static class App
     {
         public const string Name = "路易莎 Wi-Fi";
-        public const string Ssid = "LouisaCoffee";
+        // Stores don't all use the same network name: "LouisaCoffee" at most, "LOUISA COFFEE" at some
+        // (seen at 新店佳瑪門市). Compare ignoring case and spaces.
+        public static bool IsLouisa(string ssid)
+        {
+            if (ssid == null) return false;
+            return ssid.Replace(" ", "").Replace("_", "").Replace("-", "").ToLowerInvariant() == "louisacoffee";
+        }
         public const string MutexName = @"Local\LouisaWiFi";
         public const string ShowEventName = @"Local\LouisaWiFi.Show";
         public const string QuitEventName = @"Local\LouisaWiFi.Quit";

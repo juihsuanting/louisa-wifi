@@ -76,9 +76,13 @@ Wi-Fi, location and the tray need a real Windows laptop:
   Running a downloaded exe offers to install or update. `--uninstall` removes it all, and asks before deleting the data folder.
 - **Single instance**: mutex `Local\LouisaWiFi`. Event `Local\LouisaWiFi.Show` (a second launch shows a
   hidden icon) and `Local\LouisaWiFi.Quit` (the installer stops a running copy before replacing it).
-- **WLAN profile `LouisaCoffee`**: all-user (falls back to per-user), `connectionMode` **manual**. The
-  app decides when to join, so Windows never joins with the previous store's password or from a stale
-  list. Profiles left as automatic are switched to manual at startup.
+- **Network name**: not the same at every store. Most use `LouisaCoffee`, some `LOUISA COFFEE`
+  (新店佳瑪門市). `App.IsLouisa` compares ignoring case, spaces, `_` and `-`. The profile and the join
+  use the exact name the strongest router broadcasts (`ScanResult.Ssid`).
+- **WLAN profiles** (one per name, e.g. `LouisaCoffee`, `LOUISA COFFEE`): all-user (falls back to
+  per-user), `connectionMode` **manual**. The app decides when to join, so Windows never joins with the
+  previous store's password or from a stale list. Louisa profiles left as automatic are switched to
+  manual at startup.
 
 ## Mac ↔ Windows
 

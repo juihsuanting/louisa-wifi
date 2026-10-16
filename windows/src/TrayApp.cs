@@ -118,7 +118,7 @@ namespace LouisaWiFi
             Locator.Start();
             Wlan.Changed += () => Interlocked.Exchange(ref wifiChanged, 1);
             Wlan.StartNotifications();
-            Wlan.MakeProfileManual();
+            Wlan.MakeProfilesManual();
             joiner.StatusChanged += (text, k, notify) => invoker.BeginInvoke(new Action(() => OnStatus(text, k, notify)));
 
             tray.Text = App.Name;
@@ -161,7 +161,7 @@ namespace LouisaWiFi
         {
             if (kind == StatusKind.Connecting && joiner.Busy) return;   // the worker is reporting progress
             var w = Wlan.Current();
-            if (w.Connected && w.Ssid == App.Ssid) { failText = null; SetStatus(joiner.ConnectedText(w), StatusKind.Connected); }
+            if (w.Connected && App.IsLouisa(w.Ssid)) { failText = null; SetStatus(joiner.ConnectedText(w), StatusKind.Connected); }
             else if (failText != null) SetStatus(failText, StatusKind.Failed);
             else if (w.NoAdapter) SetStatus("找不到 Wi-Fi 網卡", StatusKind.Info);
             else if (w.RadioOff) SetStatus("Wi-Fi 已關閉", StatusKind.Info);

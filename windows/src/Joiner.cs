@@ -104,7 +104,7 @@ namespace LouisaWiFi
 
         public string CurrentStore(WifiStatus w)
         {
-            if (w == null || !w.Connected || w.Ssid != App.Ssid || w.Bssid == null) return null;
+            if (w == null || !w.Connected || !App.IsLouisa(w.Ssid) || w.Bssid == null) return null;
             lock (learnedLock)
             {
                 LearnedEntry l;
@@ -161,7 +161,7 @@ namespace LouisaWiFi
             if (w.RadioOff) { if (manual) Report("請先開啟 Wi-Fi", StatusKind.Failed, true); return; }
             if (!manual && !Config.Current.autoConnect) return;
             if (!manual && DateTime.Now < quietUntil) return;
-            if (w.Connected && w.Ssid == App.Ssid)
+            if (w.Connected && App.IsLouisa(w.Ssid))
             {
                 if (manual) Report(ConnectedText(w), StatusKind.Connected, true);
                 return;
@@ -261,7 +261,7 @@ namespace LouisaWiFi
             if (w.RadioOff) { Report("請先開啟 Wi-Fi", StatusKind.Failed, true); return; }
             // Already on Louisa: leave it (Mac does the same). On another Wi-Fi: the user picked
             // a store on purpose, so go ahead.
-            if (w.Connected && w.Ssid == App.Ssid) { Report(ConnectedText(w), StatusKind.Connected, true); return; }
+            if (w.Connected && App.IsLouisa(w.Ssid)) { Report(ConnectedText(w), StatusKind.Connected, true); return; }
 
             Report("連線中：" + store.name + "…", StatusKind.Connecting, false);
             Wlan.ScanAndWait();
@@ -303,7 +303,7 @@ namespace LouisaWiFi
                 if (!first)
                 {
                     var w = Wlan.Current();
-                    if (w.Connected && w.Ssid != App.Ssid)
+                    if (w.Connected && !App.IsLouisa(w.Ssid))
                     {
                         // Connected by the user: always stop. Connected by Windows on its own: stop for
                         // auto-connect if that network has internet (manual picks keep going).
@@ -319,7 +319,7 @@ namespace LouisaWiFi
                 }
                 first = false;
                 Report("連線中：" + t.Store + "…", StatusKind.Connecting, false);
-                var r = Join(t.Password, scan.Auth);
+                var r = Join(scan, t.Password);
                 if (r == Outcome.Joined)
                 {
                     Remember(scan, t.Store, t.Password);
@@ -331,25 +331,25 @@ namespace LouisaWiFi
             return Current(e) ? Outcome.Failed : Outcome.Interrupted;
         }
 
-        Outcome Join(string password, string auth)
+        Outcome Join(ScanResult scan, string password)
         {
             var start = DateTime.Now;
             var before = Wlan.Current();
             string previous = before.Connected ? before.Ssid : null;   // a manual pick may start from another network
             bool left = previous == null;
-            if (!Wlan.SetProfile(password, auth)) return Outcome.Failed;
-            Wlan.Connect();
+            if (!Wlan.SetProfile(scan.Ssid, password, scan.Auth)) return Outcome.Failed;
+            Wlan.Connect(scan.Ssid);
             quietUntil = DateTime.Now.AddSeconds(15);
             for (int i = 0; i < 30; i++)   // up to 15 s; a wrong password usually fails in 15-20 s
             {
                 Thread.Sleep(500);
                 var w = Wlan.Current();
                 if (!w.Connected || w.Ssid != previous) left = true;
-                if (w.Connected && w.Ssid == App.Ssid)
+                if (w.Connected && App.IsLouisa(w.Ssid))
                 {
                     Thread.Sleep(1000);
                     w = Wlan.Current();
-                    if (w.Connected && w.Ssid == App.Ssid)
+                    if (w.Connected && App.IsLouisa(w.Ssid))
                     {
                         Log.Write("joined in " + (DateTime.Now - start).TotalSeconds.ToString("0.0") + "s");
                         quietUntil = DateTime.Now.AddSeconds(15);
@@ -357,7 +357,7 @@ namespace LouisaWiFi
                     }
                 }
                 // The user picked another network in Windows while we were trying: let them have it.
-                if (left && w.Connected && w.Ssid != App.Ssid && !w.AutoConnected)
+                if (left && w.Connected && !App.IsLouisa(w.Ssid) && !w.AutoConnected)
                 {
                     Log.Write("使用者已連上 " + w.Ssid + "，停止嘗試");
                     return Outcome.UserTookOver;
@@ -365,7 +365,7 @@ namespace LouisaWiFi
             }
             // Cancel our attempt, but never disconnect a network the computer is already on.
             var now = Wlan.Current();
-            if (!(now.Connected && now.Ssid != App.Ssid)) Wlan.Disconnect();
+            if (!(now.Connected && !App.IsLouisa(now.Ssid))) Wlan.Disconnect();
             Log.Write("failed in " + (DateTime.Now - start).TotalSeconds.ToString("0.0") + "s");
             return Outcome.Failed;
         }

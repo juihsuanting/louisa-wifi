@@ -27,6 +27,10 @@ namespace LouisaWiFi
             Check(Stores.All.All(s => s.passwords.Count > 0), "every store has password candidates");
             Check(Stores.All.Count(s => s.HasLocation) > Stores.All.Count / 2, "most stores have coordinates");
 
+            Console.WriteLine("Network names (stores don't all use the same one)");
+            Check(App.IsLouisa("LouisaCoffee") && App.IsLouisa("LOUISA COFFEE") && App.IsLouisa("Louisa Coffee"), "LouisaCoffee / LOUISA COFFEE / Louisa Coffee");
+            Check(!App.IsLouisa("Louisa79") && !App.IsLouisa("LouisaCoffee-Guest") && !App.IsLouisa(null), "other networks are not Louisa");
+
             Console.WriteLine("Address parsing");
             Func<string, Store> at = a => new Store { address = a };
             Check(at("臺中市 西屯區 台灣大道三段").City == "台中市", "臺 → 台 in city names");

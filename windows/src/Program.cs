@@ -140,7 +140,7 @@ namespace LouisaWiFi
             try { File.Delete(StartMenuLink); } catch { }
 
             if (Directory.Exists(Paths.DataDir) &&
-                MessageBox.Show("也要刪除連線紀錄和統計嗎？\n\n（記住的門市密碼、每天的連線時間）\n\nWindows 記住的 LouisaCoffee Wi-Fi 會保留。",
+                MessageBox.Show("也要刪除連線紀錄和統計嗎？\n\n（記住的門市密碼、每天的連線時間）\n\nWindows 記住的路易莎 Wi-Fi 會保留。",
                     "Louisa Wi-Fi", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
             {
                 try { Directory.Delete(Paths.DataDir, true); } catch { }

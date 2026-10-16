@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -24,6 +25,7 @@ namespace LouisaWiFi
 
     class ScanResult
     {
+        public string Ssid;                                        // this store's network name, as broadcast
         public List<AccessPoint> Aps = new List<AccessPoint>();   // strongest first
         public string Auth = "WPA2PSK";                           // WLAN profile authentication value
         public AccessPoint Best { get { return Aps[0]; } }
@@ -163,11 +165,11 @@ namespace LouisaWiFi
             scanDone.WaitOne(4000);
         }
 
-        // Nearby LouisaCoffee access points from the last scan, or null when there are none.
+        // Nearby Louisa access points from the last scan, or null when there are none.
         // locationBlocked: Windows 11 24H2+ refuses to list networks to apps without location access.
-        public static ScanResult FindLouisa(out bool locationBlocked) { return Find(App.Ssid, out locationBlocked); }
+        public static ScanResult FindLouisa(out bool locationBlocked) { return Find(App.IsLouisa, out locationBlocked); }
 
-        public static ScanResult Find(string ssid, out bool locationBlocked)
+        public static ScanResult Find(Func<string, bool> match, out bool locationBlocked)
         {
             locationBlocked = false;
             lock (gate)
@@ -181,21 +183,26 @@ namespace LouisaWiFi
                 if (rc == ERROR_ACCESS_DENIED) { locationBlocked = true; return null; }
                 if (rc != 0) return null;
 
-                var result = new ScanResult();
+                var found = new List<KeyValuePair<string, AccessPoint>>();
                 try
                 {
                     int count = Marshal.ReadInt32(list, 4);
                     for (int i = 0; i < count; i++)
                     {
                         IntPtr entry = new IntPtr(list.ToInt64() + 8 + i * WLAN_BSS_ENTRY_SIZE);
-                        if (ReadSsid(entry, 0) != ssid) continue;
-                        result.Aps.Add(new AccessPoint { Bssid = ReadBssid(entry, 40), Rssi = Marshal.ReadInt32(entry, 56) });
+                        string ssid = ReadSsid(entry, 0);
+                        if (!match(ssid)) continue;
+                        found.Add(new KeyValuePair<string, AccessPoint>(ssid,
+                            new AccessPoint { Bssid = ReadBssid(entry, 40), Rssi = Marshal.ReadInt32(entry, 56) }));
                     }
                 }
                 finally { WlanFreeMemory(list); }
-                if (result.Aps.Count == 0) return null;
-                result.Aps.Sort((a, b) => b.Rssi.CompareTo(a.Rssi));
-                result.Auth = Auth(id, ssid);
+                if (found.Count == 0) return null;
+                found.Sort((a, b) => b.Value.Rssi.CompareTo(a.Value.Rssi));
+                // Use the strongest network's exact name (and only its routers) for the profile.
+                var result = new ScanResult { Ssid = found[0].Key };
+                foreach (var f in found) if (f.Key == result.Ssid) result.Aps.Add(f.Value);
+                result.Auth = Auth(id, result.Ssid);
                 return result;
             }
         }
@@ -225,16 +232,17 @@ namespace LouisaWiFi
             return "WPA2PSK";
         }
 
-        // Save the LouisaCoffee profile with this password. All-user first, because a
-        // LouisaCoffee joined earlier from Windows Settings is all-user and blocks a per-user one.
-        public static bool SetProfile(string password, string auth)
+        // Save the profile for this store's network with this password. All-user first, because a
+        // network joined earlier from Windows Settings is all-user and blocks a per-user one.
+        public static bool SetProfile(string ssid, string password, string auth)
         {
             string key = auth == "open" ? "" :
                 "<sharedKey><keyType>passPhrase</keyType><protected>false</protected><keyMaterial>" +
                 System.Security.SecurityElement.Escape(password) + "</keyMaterial></sharedKey>";
+            string name = System.Security.SecurityElement.Escape(ssid);
             string xml =
                 "<?xml version=\"1.0\"?><WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\">" +
-                "<name>" + App.Ssid + "</name><SSIDConfig><SSID><name>" + App.Ssid + "</name></SSID></SSIDConfig>" +
+                "<name>" + name + "</name><SSIDConfig><SSID><name>" + name + "</name></SSID></SSIDConfig>" +
                 // manual: Windows never joins LouisaCoffee on its own (with the last store's password, or from
                 // a stale network list after you've left). This app decides when; roaming inside a store still works.
                 "<connectionType>ESS</connectionType><connectionMode>manual</connectionMode><MSM><security>" +
@@ -253,38 +261,52 @@ namespace LouisaWiFi
             }
         }
 
-        // Profiles saved by earlier versions (or by joining LouisaCoffee in Windows Settings) are "connect
-        // automatically". Switch them to manual. Reads the saved profile as-is (password stays encrypted),
+        // Louisa profiles saved by earlier versions (or by joining in Windows Settings) are "connect
+        // automatically". Switch them to manual. Reads each saved profile as-is (password stays encrypted),
         // so no password is needed.
-        public static void MakeProfileManual()
+        public static void MakeProfilesManual()
         {
             lock (gate)
             {
                 Guid? g = Interface();
                 if (g == null) return;
                 Guid id = g.Value;
-                IntPtr xmlPtr;
-                int flags = 0, access;
-                if (WlanGetProfile(Handle, ref id, App.Ssid, IntPtr.Zero, out xmlPtr, ref flags, out access) != 0) return;
-                string xml;
-                try { xml = Marshal.PtrToStringUni(xmlPtr); }
-                finally { WlanFreeMemory(xmlPtr); }
-                if (xml == null || !xml.Contains("<connectionMode>auto</connectionMode>")) return;
-                xml = xml.Replace("<connectionMode>auto</connectionMode>", "<connectionMode>manual</connectionMode>");
-                int reason;
-                int rc = WlanSetProfile(Handle, ref id, flags & 2 /* keep per-user / all-user */, xml, null, true, IntPtr.Zero, out reason);
-                Log.Write(rc == 0 ? "LouisaCoffee profile set to connect manually" : "could not update profile: " + rc + " reason " + reason);
+                IntPtr list;
+                if (WlanGetProfileList(Handle, ref id, IntPtr.Zero, out list) != 0) return;
+                var names = new List<string>();
+                try
+                {
+                    int count = Marshal.ReadInt32(list, 0);
+                    for (int i = 0; i < count; i++)   // WLAN_PROFILE_INFO = WCHAR[256] + flags = 516 bytes
+                        names.Add(Marshal.PtrToStringUni(new IntPtr(list.ToInt64() + 8 + i * 516)));
+                }
+                finally { WlanFreeMemory(list); }
+
+                foreach (var name in names.Where(App.IsLouisa))
+                {
+                    IntPtr xmlPtr;
+                    int flags = 0, access;
+                    if (WlanGetProfile(Handle, ref id, name, IntPtr.Zero, out xmlPtr, ref flags, out access) != 0) continue;
+                    string xml;
+                    try { xml = Marshal.PtrToStringUni(xmlPtr); }
+                    finally { WlanFreeMemory(xmlPtr); }
+                    if (xml == null || !xml.Contains("<connectionMode>auto</connectionMode>")) continue;
+                    xml = xml.Replace("<connectionMode>auto</connectionMode>", "<connectionMode>manual</connectionMode>");
+                    int reason;
+                    int rc = WlanSetProfile(Handle, ref id, flags & 2 /* keep per-user / all-user */, xml, null, true, IntPtr.Zero, out reason);
+                    Log.Write(rc == 0 ? name + " profile set to connect manually" : "could not update " + name + " profile: " + rc + " reason " + reason);
+                }
             }
         }
 
-        public static bool Connect()
+        public static bool Connect(string ssid)
         {
             lock (gate)
             {
                 Guid? g = Interface();
                 if (g == null) return false;
                 Guid id = g.Value;
-                var p = new ConnectionParameters { mode = 0 /* profile */, profile = App.Ssid, bssType = 1 /* infrastructure */ };
+                var p = new ConnectionParameters { mode = 0 /* profile */, profile = ssid, bssType = 1 /* infrastructure */ };
                 return WlanConnect(Handle, ref id, ref p, IntPtr.Zero) == 0;
             }
         }
@@ -338,6 +360,7 @@ namespace LouisaWiFi
         [DllImport("wlanapi.dll")] static extern int WlanGetNetworkBssList(IntPtr handle, ref Guid iface, IntPtr ssid, int bssType, bool securityEnabled, IntPtr reserved, out IntPtr list);
         [DllImport("wlanapi.dll")] static extern int WlanGetAvailableNetworkList(IntPtr handle, ref Guid iface, int flags, IntPtr reserved, out IntPtr list);
         [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)] static extern int WlanSetProfile(IntPtr handle, ref Guid iface, int flags, string xml, string security, bool overwrite, IntPtr reserved, out int reason);
+        [DllImport("wlanapi.dll")] static extern int WlanGetProfileList(IntPtr handle, ref Guid iface, IntPtr reserved, out IntPtr list);
         [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)] static extern int WlanGetProfile(IntPtr handle, ref Guid iface, string name, IntPtr reserved, out IntPtr xml, ref int flags, out int access);
         [DllImport("wlanapi.dll")] static extern int WlanConnect(IntPtr handle, ref Guid iface, ref ConnectionParameters parameters, IntPtr reserved);
         [DllImport("wlanapi.dll")] static extern int WlanDisconnect(IntPtr handle, ref Guid iface, IntPtr reserved);

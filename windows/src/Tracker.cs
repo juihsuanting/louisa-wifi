@@ -29,7 +29,7 @@ namespace LouisaWiFi
         public void Tick()
         {
             var w = Wlan.Current();
-            if (!w.Connected || w.Ssid != App.Ssid) return;
+            if (!w.Connected || !App.IsLouisa(w.Ssid)) return;
             string store = joiner.CurrentStore(w) ?? UnknownStore;
             string day = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             Dictionary<string, double> stores;
