@@ -25,3 +25,23 @@ jobs:
       - run: gh release create "$TAG" build/LouisaWiFi.zip raycast/louisa-wifi.js --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Windows app, added to the release created above.
+  windows:
+    needs: release
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - run: .\windows\build.ps1 -Version $env:TAG.TrimStart('v')
+      - run: |
+          Copy-Item windows\dist\LouisaWiFi.exe LouisaWiFi-Windows.exe
+          gh release upload $env:TAG LouisaWiFi-Windows.exe
+        env:
+          GH_TOKEN: ${{ github.token }}

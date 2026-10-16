@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/madeyexz/louisa-wifi/releases/latest/download/LouisaWiFi.zip"><b>⬇️ 下載 Louisa Wi-Fi</b></a> ・
+  <a href="#windows">Windows 版</a> ・
   <a href="#安裝">安裝教學</a> ・
   <a href="#常見問題">常見問題</a>
 </p>
@@ -68,6 +69,14 @@ Louisa Wi-Fi 會認出你在哪一家店，自動換上那家店的密碼。全�
 curl -fsSL https://raw.githubusercontent.com/madeyexz/louisa-wifi/main/install.sh | bash
 ```
 </details>
+
+### Windows
+
+Windows 10 / 11 也能用：
+
+👉 **[下載 Windows 版](https://github.com/madeyexz/louisa-wifi/releases/latest/download/LouisaWiFi-Windows.exe)**，點兩下後按「是」安裝，右下角會出現路易莎圖示。
+
+如果跳出「Windows 已保護您的電腦」，按「其他資訊」→「仍要執行」，原因跟上面 Mac 的警告一樣。更多說明見 [windows/README.md](windows/README.md)。
 
 ## 怎麼用
 

@@ -11,3 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: ./build.sh
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell   # Windows PowerShell 5.1: build.ps1 uses the .NET Framework C# compiler
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0    # build.ps1 takes the version from the latest tag
+      - run: .\windows\build.ps1
+      - run: .\windows\test.ps1
